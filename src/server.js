@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
 const rateLimit = require('express-rate-limit');
+const mongoose = require('mongoose');
 
 const connectDB = require('./config/db');
 const env = require('./config/env');
@@ -48,7 +49,10 @@ app.use(
       if (env.CORS_ORIGINS.includes(origin)) {
         return callback(null, true);
       }
-      return callback(new Error('Not allowed by CORS'));
+      console.error(`CORS Blocked: Origin '${origin}' is not in allowed list: ${env.CORS_ORIGINS}`);
+      const error = new Error('Not allowed by CORS');
+      error.statusCode = 403;
+      return callback(error);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -129,6 +133,38 @@ app.get('/health', (req, res) => {
 });
 
 // ================================================
+// DATABASE CONNECTION MIDDLEWARE
+// ================================================
+
+// Connect to MongoDB before handling requests (cached for serverless)
+// MUST be before routes to ensure connection exists
+let isConnected = false;
+app.use(async (req, res, next) => {
+  // Skip DB connection for health check and simple preflight
+  if (req.path === '/health' || req.method === 'OPTIONS') {
+    return next();
+  }
+
+  try {
+    if (!isConnected) {
+      if (mongoose.connection.readyState === 1) {
+        isConnected = true;
+        return next();
+      }
+      await connectDB();
+      isConnected = true;
+    }
+    next();
+  } catch (error) {
+    console.error('Database connection error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Database connection failed' 
+    });
+  }
+});
+
+// ================================================
 // PUBLIC API ROUTES (No Auth Required)
 // ================================================
 
@@ -168,26 +204,17 @@ app.use(errorHandler);
 // ================================================
 
 // Connect to MongoDB before handling requests (cached for serverless)
-let isConnected = false;
-app.use(async (req, res, next) => {
-  try {
-    if (!isConnected) {
-      await connectDB();
-      isConnected = true;
-    }
-    next();
-  } catch (error) {
-    console.error('Database connection error:', error);
-    next(error);
-  }
-});
+// ================================================
+// DATABASE CONNECTION MIDDLEWARE
+// ================================================
 
 // Only start listening locally (not on Vercel)
-if (process.env.VERCEL !== '1') {
+if (env.isDev || process.env.VERCEL !== '1') {
   const startServer = async () => {
     try {
-      await connectDB();
-      isConnected = true;
+      if (mongoose.connection.readyState !== 1) {
+        await connectDB();
+      }
       app.listen(env.PORT, () => {
         console.log(`\n🚀 BookMyPujari API Server`);
         console.log(`   Environment: ${env.NODE_ENV}`);
