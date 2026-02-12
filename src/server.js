@@ -170,11 +170,16 @@ app.use(errorHandler);
 // Connect to MongoDB before handling requests (cached for serverless)
 let isConnected = false;
 app.use(async (req, res, next) => {
-  if (!isConnected) {
-    await connectDB();
-    isConnected = true;
+  try {
+    if (!isConnected) {
+      await connectDB();
+      isConnected = true;
+    }
+    next();
+  } catch (error) {
+    console.error('Database connection error:', error);
+    next(error);
   }
-  next();
 });
 
 // Only start listening locally (not on Vercel)
