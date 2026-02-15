@@ -61,6 +61,38 @@ app.use(
   })
 );
 
+// ================================================
+// DATABASE CONNECTION MIDDLEWARE
+// ================================================
+
+// Connect to MongoDB before handling requests (cached for serverless)
+// MUST be before routes to ensure connection exists
+let isConnected = false;
+app.use(async (req, res, next) => {
+  // Skip DB connection for health check and simple preflight
+  if (req.path === '/health' || req.method === 'OPTIONS') {
+    return next();
+  }
+
+  try {
+    if (!isConnected) {
+      if (mongoose.connection.readyState === 1) {
+        isConnected = true;
+        return next();
+      }
+      await connectDB();
+      isConnected = true;
+    }
+    next();
+  } catch (error) {
+    console.error('Database connection error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Database connection failed' 
+    });
+  }
+});
+
 // Global rate limiter - 100 requests per 15 minutes per IP
 const globalLimiter = rateLimit({
   windowMs: env.RATE_LIMIT_WINDOW_MS,
@@ -132,37 +164,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// ================================================
-// DATABASE CONNECTION MIDDLEWARE
-// ================================================
 
-// Connect to MongoDB before handling requests (cached for serverless)
-// MUST be before routes to ensure connection exists
-let isConnected = false;
-app.use(async (req, res, next) => {
-  // Skip DB connection for health check and simple preflight
-  if (req.path === '/health' || req.method === 'OPTIONS') {
-    return next();
-  }
-
-  try {
-    if (!isConnected) {
-      if (mongoose.connection.readyState === 1) {
-        isConnected = true;
-        return next();
-      }
-      await connectDB();
-      isConnected = true;
-    }
-    next();
-  } catch (error) {
-    console.error('Database connection error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Database connection failed' 
-    });
-  }
-});
 
 // ================================================
 // PUBLIC API ROUTES (No Auth Required)
