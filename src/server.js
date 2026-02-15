@@ -6,6 +6,7 @@ const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
 const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
+mongoose.set('debug', true); // Enable mongoose debugging temporarily
 
 const connectDB = require('./config/db');
 const env = require('./config/env');
@@ -160,7 +161,13 @@ app.get('/health', (req, res) => {
     success: true,
     message: 'BookMyPujari API is running',
     environment: env.NODE_ENV,
-    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Welcome to BookMyPujari API! Use /api/v1 for endpoints.'
   });
 });
 
